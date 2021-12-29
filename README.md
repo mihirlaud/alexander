@@ -1,5 +1,8 @@
 # Alexander
 
+> When Alexander saw the breadth of his domain, he wept, for there were no more worlds to conquer.
+
+—Hans Gruber, *Die Hard*
 
 ## What is a TTRPG?
 
