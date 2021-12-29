@@ -21,6 +21,7 @@ Right now, Alexander is very much a work-in progress. Bugs, suggestions for feat
 Features:
 * Create entities with HP, initiative, and a modifier
 * Initiative tracker
+* Dice roller
 
 To-Do:
 * Timer for turns
@@ -28,4 +29,3 @@ To-Do:
 * Battle map visualizer
 * Real time decision maker
 * Import and export encounters
-* Dice roller

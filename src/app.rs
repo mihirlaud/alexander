@@ -1,5 +1,46 @@
 use eframe::{egui, epi};
 
+pub enum AppMode {
+    Map,
+    DiceRoller,
+    Timers,
+}
+
+impl Default for AppMode {
+    fn default() -> Self {
+        AppMode::Map
+    }
+}
+
+#[derive(PartialEq, Clone)]
+pub enum DiceType {
+    D4,
+    D6,
+    D8,
+    D10,
+    D12,
+    D20,
+    D100,
+}
+
+impl Default for DiceType {
+    fn default() -> Self {
+        DiceType::D4
+    }
+}
+
+fn get_dice_val(dice_type: DiceType) -> i32 {
+    match dice_type {
+        DiceType::D4 => 4,
+        DiceType::D6 => 6,
+        DiceType::D8 => 8,
+        DiceType::D10 => 10,
+        DiceType::D12 => 12,
+        DiceType::D20 => 20,
+        DiceType::D100 => 100,
+    }
+}
+
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[cfg_attr(feature = "persistence", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "persistence", serde(default))] // if we add new fields, give them default values when deserializing old state
@@ -19,6 +60,14 @@ pub struct TemplateApp {
     encounter_started: bool,
     current_entity: usize,
     round: u32,
+
+    mode: AppMode,
+
+    dice_type: DiceType,
+    dice_quantity: String,
+    dice_modifier: String,
+    dice_breakdown: Vec<(i32, i32)>,
+    dice_roll_total: i32,
 }
 
 impl epi::App for TemplateApp {
@@ -59,6 +108,63 @@ impl epi::App for TemplateApp {
 
         self.entity_removed = -1;
 
+        if self.creating_entity {
+            egui::Window::new("Create New Entity").show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("Name: ");
+                    ui.text_edit_singleline(&mut self.new_entity_name);
+                });
+
+                ui.horizontal(|ui| {
+                    ui.label("HP: ");
+                    ui.add(egui::Slider::new(&mut self.new_entity_hp, 0..=300));
+                });
+
+                ui.horizontal(|ui| {
+                    ui.label("Initiative: ");
+                    ui.add(egui::TextEdit::singleline(&mut self.new_entity_init).desired_width(25.0));
+                    if ui.button("Roll").clicked() {
+                        use rand::Rng;
+                        let mut rng = rand::thread_rng();
+                        let mut init: i32 = rng.gen_range(1..=20) + self.new_entity_init_mod.parse::<i32>().unwrap_or_default();
+                        if init < 1 {
+                            init = 1;
+                        }
+                        self.new_entity_init = format!("{}", init);
+                    }
+                    ui.label(" d20 + ");
+                    ui.add(egui::TextEdit::singleline(&mut self.new_entity_init_mod).desired_width(25.0));
+                });
+
+                ui.horizontal(|ui| {
+                    if ui.button("Add").clicked() {
+                        self.creating_entity = false;
+                        self.entities.push(
+                            Entity::new(
+                                self.new_entity_name.clone(), 
+                                self.new_entity_hp, 
+                                self.new_entity_init.parse::<u32>().unwrap_or(1),
+                                self.new_entity_init_mod.parse::<i32>().unwrap_or(0)
+                            )
+                        );
+                        self.entities.sort();
+
+                        self.new_entity_name = "".to_string();
+                        self.new_entity_hp = 0;
+                        self.new_entity_init = "".to_string();
+                        self.new_entity_init_mod = "".to_string();
+                    }
+
+                    if ui.button("Cancel").clicked() {
+                        self.creating_entity = false;
+                        self.new_entity_name = "".to_string();
+                        self.new_entity_hp = 0;
+                    }
+                });
+                
+            });
+        }
+
         egui::TopBottomPanel::top("menu").show(ctx, |ui| {
             // The top panel is often a good place for a menu bar:
             egui::menu::bar(ui, |ui| {
@@ -81,6 +187,20 @@ impl epi::App for TemplateApp {
                     if ui.button("Export").clicked() {}
                     if ui.button("Import").clicked() {}
                 });
+
+                ui.separator();
+
+                if ui.button("Map").clicked() {
+                    self.mode = AppMode::Map;
+                }
+
+                if ui.button("Dice Roller").clicked() {
+                    self.mode = AppMode::DiceRoller;
+                }
+
+                if ui.button("Timers").clicked() {
+                    self.mode = AppMode::Timers;
+                }
             });
         });
 
@@ -173,66 +293,107 @@ impl epi::App for TemplateApp {
             ui.add_space(5.0);
             ui.separator();
             ui.add_space(5.0);
+
+            match self.mode {
+                AppMode::Map => {
+                    ui.heading("Map");
+                }
+                AppMode::DiceRoller => {
+                    ui.heading("Dice Roller");
+
+                    ui.add_space(20.0);
+                    ui.horizontal(|ui| {
+                        ui.label("Select Dice: ");
+
+                        ui.radio_value(&mut self.dice_type, DiceType::D4, "d4");
+                        ui.radio_value(&mut self.dice_type, DiceType::D6, "d6");
+                        ui.radio_value(&mut self.dice_type, DiceType::D8, "d8");
+                        ui.radio_value(&mut self.dice_type, DiceType::D10, "d10");
+                        ui.radio_value(&mut self.dice_type, DiceType::D12, "d12");
+                        ui.radio_value(&mut self.dice_type, DiceType::D20, "d20");
+                        ui.radio_value(&mut self.dice_type, DiceType::D100, "d100");
+                    });
+                    ui.add_space(5.0);
+
+                    ui.horizontal(|ui| {
+                        ui.label("Quantity: ");
+                        ui.add(egui::TextEdit::singleline(&mut self.dice_quantity).desired_width(25.0));
+                        ui.label("Modifier: ");
+                        ui.add(egui::TextEdit::singleline(&mut self.dice_modifier).desired_width(25.0));
+                    });
+
+                    ui.add_space(10.0);
+                    ui.vertical_centered_justified(|ui| {
+                        if ui.button("Roll").clicked() {
+                            self.dice_roll_total = 0;
+                            self.dice_breakdown.clear();
+
+                            for _n in 0..self.dice_quantity.parse::<u32>().unwrap_or(0) {
+                                use rand::Rng;
+                                let mut rng = rand::thread_rng();
+
+                                let roll = rng.gen_range(1 ..= get_dice_val(self.dice_type.clone()));
+
+                                let modifier = self.dice_modifier.parse::<i32>().unwrap_or(0);
+
+                                self.dice_breakdown.push((roll, modifier));
+
+                                self.dice_roll_total += roll + modifier;
+                            }
+                        }
+                    });
+                    ui.add_space(10.0);
+
+                    ui.label(format!("Total: {}", self.dice_roll_total));
+
+                    ui.add_space(5.0);
+                    if !self.dice_breakdown.is_empty() {
+                        egui::ScrollArea::horizontal().show(ui, |ui| {
+                            ui.strong("Breakdown: ");
+                            ui.horizontal(|ui| {
+                                for n in (0..self.dice_breakdown.len()).step_by(10) {
+                                    ui.vertical(|ui| {
+                                        for i in n .. n + 10 {
+                                            if i > self.dice_breakdown.len() - 1 {
+                                                break;
+                                            }
+                                            let (roll, modifier) = self.dice_breakdown.get(i).unwrap();
+                                            let crit_val = get_dice_val(self.dice_type.clone());
+
+                                            ui.horizontal(|ui| {
+                                                if roll == &crit_val {
+                                                    ui.add(egui::Label::new(format!("•  {} ", roll + modifier)).text_color(egui::Color32::GREEN));
+                                                    ui.add(egui::Label::new(format!("({} + {})", roll, modifier)).text_color(egui::Color32::GREEN).italics());
+                                                } else if roll == &1 {
+                                                    ui.add(egui::Label::new(format!("•  {} ", roll + modifier)).text_color(egui::Color32::RED));
+                                                    ui.add(egui::Label::new(format!("({} + {})", roll, modifier)).text_color(egui::Color32::RED).italics());
+                                                } else {
+                                                    ui.label(format!("•  {} ", roll + modifier));
+                                                    ui.add(egui::Label::new(format!("({} + {})", roll, modifier)).italics());
+                                                }
+                                            });
+                                        }
+                                    });
+                                    ui.separator();
+                                }
+                            });
+                            // for (roll, modifier) in self.dice_breakdown.clone() {
+                            //     ui.horizontal(|ui| {
+                            //         ui.label(format!("•  {} ", roll + modifier));
+                            //         ui.add(egui::Label::new(format!("({} + {})", roll, modifier)).italics());
+                            //     });
+                            // }
+                        });
+                    }
+                    
+                }
+                AppMode::Timers => {
+                    ui.heading("Timers");
+                }
+            }
             
             egui::warn_if_debug_build(ui);
         });
-
-        if self.creating_entity {
-            egui::Window::new("Create New Entity").show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label("Name: ");
-                    ui.text_edit_singleline(&mut self.new_entity_name);
-                });
-
-                ui.horizontal(|ui| {
-                    ui.label("HP: ");
-                    ui.add(egui::Slider::new(&mut self.new_entity_hp, 0..=300));
-                });
-
-                ui.horizontal(|ui| {
-                    ui.label("Initiative: ");
-                    ui.add(egui::TextEdit::singleline(&mut self.new_entity_init).desired_width(25.0));
-                    if ui.button("Roll").clicked() {
-                        use rand::Rng;
-                        let mut rng = rand::thread_rng();
-                        let mut init: i32 = rng.gen_range(1..=20) + self.new_entity_init_mod.parse::<i32>().unwrap_or_default();
-                        if init < 1 {
-                            init = 1;
-                        }
-                        self.new_entity_init = format!("{}", init);
-                    }
-                    ui.label(" d20 + ");
-                    ui.add(egui::TextEdit::singleline(&mut self.new_entity_init_mod).desired_width(25.0));
-                });
-
-                ui.horizontal(|ui| {
-                    if ui.button("Add").clicked() {
-                        self.creating_entity = false;
-                        self.entities.push(
-                            Entity::new(
-                                self.new_entity_name.clone(), 
-                                self.new_entity_hp, 
-                                self.new_entity_init.parse::<u32>().unwrap_or(1),
-                                self.new_entity_init_mod.parse::<i32>().unwrap_or(0)
-                            )
-                        );
-                        self.entities.sort();
-
-                        self.new_entity_name = "".to_string();
-                        self.new_entity_hp = 0;
-                        self.new_entity_init = "".to_string();
-                        self.new_entity_init_mod = "".to_string();
-                    }
-
-                    if ui.button("Cancel").clicked() {
-                        self.creating_entity = false;
-                        self.new_entity_name = "".to_string();
-                        self.new_entity_hp = 0;
-                    }
-                });
-                
-            });
-        }
 
         if self.entity_removed >= 0 {
             self.entities.remove(self.entities.len() - 1 - self.entity_removed as usize);
