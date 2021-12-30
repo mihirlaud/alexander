@@ -66,7 +66,7 @@ pub struct TemplateApp {
     dice_type: DiceType,
     dice_quantity: String,
     dice_modifier: String,
-    dice_breakdown: Vec<(i32, i32)>,
+    dice_breakdown: Vec<i32>,
     dice_roll_total: i32,
 }
 
@@ -336,7 +336,7 @@ impl epi::App for TemplateApp {
 
                                 let modifier = self.dice_modifier.parse::<i32>().unwrap_or(0);
 
-                                self.dice_breakdown.push((roll, modifier));
+                                self.dice_breakdown.push(roll);
 
                                 self.dice_roll_total += roll + modifier;
                             }
@@ -344,7 +344,11 @@ impl epi::App for TemplateApp {
                     });
                     ui.add_space(10.0);
 
-                    ui.label(format!("Total: {}", self.dice_roll_total));
+                    ui.horizontal(|ui| {
+                        ui.label(format!("Total: {}", self.dice_roll_total));
+                        let modifier = self.dice_modifier.parse::<i32>().unwrap_or(0);
+                        ui.label(format!("({} + {})", self.dice_roll_total - modifier, modifier));
+                    });
 
                     ui.add_space(5.0);
                     if !self.dice_breakdown.is_empty() {
@@ -357,19 +361,16 @@ impl epi::App for TemplateApp {
                                             if i > self.dice_breakdown.len() - 1 {
                                                 break;
                                             }
-                                            let (roll, modifier) = self.dice_breakdown.get(i).unwrap();
+                                            let roll = self.dice_breakdown.get(i).unwrap();
                                             let crit_val = get_dice_val(self.dice_type.clone());
 
                                             ui.horizontal(|ui| {
                                                 if roll == &crit_val {
-                                                    ui.add(egui::Label::new(format!("•  {} ", roll + modifier)).text_color(egui::Color32::GREEN));
-                                                    ui.add(egui::Label::new(format!("({} + {})", roll, modifier)).text_color(egui::Color32::GREEN).italics());
+                                                    ui.add(egui::Label::new(format!("•  {} ", roll)).text_color(egui::Color32::GREEN));
                                                 } else if roll == &1 {
-                                                    ui.add(egui::Label::new(format!("•  {} ", roll + modifier)).text_color(egui::Color32::RED));
-                                                    ui.add(egui::Label::new(format!("({} + {})", roll, modifier)).text_color(egui::Color32::RED).italics());
+                                                    ui.add(egui::Label::new(format!("•  {} ", roll)).text_color(egui::Color32::RED));
                                                 } else {
-                                                    ui.label(format!("•  {} ", roll + modifier));
-                                                    ui.add(egui::Label::new(format!("({} + {})", roll, modifier)).italics());
+                                                    ui.label(format!("•  {} ", roll));
                                                 }
                                             });
                                         }
